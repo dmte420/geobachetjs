@@ -1,48 +1,90 @@
 {
   "expo": {
-    "name": "geobachetj",
+    "name": "GeoBache TJ",
     "slug": "geobachetj",
-    "version": "1.0.0",
+    "version": "2.1.3",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "geobachetj",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "jsEngine": "hermes",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0B1E3D"
     },
     "android": {
+      "package": "com.dmte420.geobachetj.G1",
+      "versionCode": 24,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/icon-foreground.png",
+        "backgroundColor": "#0B1E3D"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "VIBRATE"
+      ]
     },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+    "ios": {
+      "bundleIdentifier": "com.dmte420.geobachetj.v2",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "GeoBache TJ necesita acceso a tu cámara para tomar fotos de los baches que reportes.",
+        "NSLocationWhenInUseUsageDescription": "GeoBache TJ usa tu ubicación para mostrar baches cercanos y centrar el mapa.",
+        "NSPhotoLibraryUsageDescription": "GeoBache TJ necesita acceso a tu galería para seleccionar fotos de baches."
+      }
     },
     "plugins": [
-      "expo-router",
       [
-        "expo-splash-screen",
+        "expo-image-picker",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
-          "dark": {
-            "backgroundColor": "#000000"
+          "cameraPermission": "La app necesita acceso a tu cámara para reportar baches.",
+          "photosPermission": "La app necesita acceso a tu galería para seleccionar fotos de baches."
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "GeoBache TJ usa tu ubicación para alertas de baches en tu ruta.",
+          "locationWhenInUsePermission": "GeoBache TJ usa tu ubicación para mostrar baches cercanos.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24,
+            "kotlinVersion": "2.0.21",
+            "extraMavenRepos": [
+              "https://maven.pkg.github.com/maplibre/maplibre-native"
+            ],
+            "packagingOptions": {
+              "pickFirst": [
+                "**/libc++_shared.so",
+                "**/libjsc.so"
+              ],
+              "exclude": [
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/NOTICE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE.txt"
+              ]
+            }
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
           }
         }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
