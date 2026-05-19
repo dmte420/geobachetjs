@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "GeoBache TJ",
-    "slug": "geobachetj",
-    "version": "2.1.3",
+    "name": "geobachetjs",
+    "slug": "geobachetjs",
+    "version": "2.153",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.dmte420.geobachetj.G1",
-      "versionCode": 24,
+      "versionCode": 25,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#0B1E3D"
