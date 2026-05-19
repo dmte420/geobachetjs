@@ -15,16 +15,17 @@
     },
     "android": {
       "package": "com.dmte420.geobachetjs.G1",
-      "versionCode": 26,
+      "versionCode": 27,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#0B1E3D"
       },
       "permissions": [
-        "CAMERA",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "VIBRATE"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
         {
@@ -52,6 +53,7 @@
       }
     },
     "plugins": [
+      "./withManifestFix",
       [
         "expo-image-picker",
         {
@@ -79,11 +81,6 @@
             "extraMavenRepos": [
               "https://maven.pkg.github.com/maplibre/maplibre-native"
             ],
-            "manifest": {
-              "tools": {
-                "node": "replace"
-              }
-            },
             "packagingOptions": {
               "pickFirst": [
                 "**/libc++_shared.so",
@@ -106,6 +103,11 @@
     ],
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2a0855bb-9fa9-4a67-affa-263dfb197a44"
+      }
     }
   }
 }
