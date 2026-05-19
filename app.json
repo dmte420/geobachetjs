@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "geobachetjs",
-    "slug": "geobachetjs",
+    "name": "GeoBachetj",
+    "slug": "geobachetj",
+    "scheme": "exp+geobachetjs",
     "version": "2.1.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -24,6 +25,21 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "VIBRATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "exp+geobachetjs"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "ios": {
