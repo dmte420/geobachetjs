@@ -3,7 +3,7 @@
     "name": "GeoBachetj",
     "slug": "geobachetj",
     "scheme": "exp+geobachetjs",
-    "version": "2.1.3",
+    "version": "2.1.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     },
     "android": {
       "package": "com.dmte420.geobachetjs.G1",
-      "versionCode": 24,
+      "versionCode": 26,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#0B1E3D"
@@ -79,6 +79,11 @@
             "extraMavenRepos": [
               "https://maven.pkg.github.com/maplibre/maplibre-native"
             ],
+            "manifest": {
+              "tools": {
+                "node": "replace"
+              }
+            },
             "packagingOptions": {
               "pickFirst": [
                 "**/libc++_shared.so",
