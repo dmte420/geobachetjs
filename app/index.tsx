@@ -3,15 +3,12 @@ import { Text, View, StyleSheet, TouchableOpacity, StatusBar, ScrollView, Dimens
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import MapLibreGL, { MapView, Marker } from '@maplibre/maplibre-react-native';
+import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-
-// ✅ CORREGIDO: setAccessToken con A mayúscula
-MapLibreGL.setAccessToken(null);
 
 const { height } = Dimensions.get('window');
 
@@ -19,8 +16,6 @@ export default function HomeScreen() {
   const [location, setLocation] = useState(null);
   const [reportes, setReportes] = useState([]);
   const [reportesFiltrados, setReportesFiltrados] = useState([]);
-  const [contador, setContador] = useState(0);
-  const [contadorReparados, setContadorReparados] = useState(0);
   const [modalAyuda, setModalAyuda] = useState(false);
   const [modalDetalle, setModalDetalle] = useState(false);
   const [reporteSeleccionado, setReporteSeleccionado] = useState(null);
@@ -28,11 +23,25 @@ export default function HomeScreen() {
   const [filtroActivo, setFiltroActivo] = useState('todos');
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const router = useRouter();
-  const mapRef = useRef(null);
+  const mapRef = useRef<MapView>(null);
+
+  // CONTADORES CALCULADOS DIRECTO - SIN useState
+  const contadorReportes = reportesFiltrados.length;
+  const contadorReparados = reportesFiltrados.filter(r => r.estatus === 'reparado').length;
 
   useFocusEffect(
     useCallback(() => {
       cargarUbicacion();
+      
+      setTimeout(() => {
+        mapRef.current?.animateToRegion({
+          latitude: 32.4928,
+          longitude: -116.9297,
+          latitudeDelta: 0.09,
+          longitudeDelta: 0.09,
+        }, 800);
+      }, 500);
+
       cargarReportes();
     }, [])
   );
@@ -71,11 +80,12 @@ export default function HomeScreen() {
 
   const centrarEnUbicacion = () => {
     if (location && mapRef.current) {
-      mapRef.current.setCamera({
-        centerCoordinate: [location.coords.longitude, location.coords.latitude],
-        zoomLevel: 14,
-        animationDuration: 1000,
-      });
+      mapRef.current.animateToRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.008,
+        longitudeDelta: 0.008,
+      }, 1000);
     } else {
       cargarUbicacion();
     }
@@ -83,18 +93,15 @@ export default function HomeScreen() {
 
   const cargarReportes = async () => {
     try {
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from('reportes')
-        .select('*', { count: 'exact' })
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
       if (data) {
         setReportes(data);
-        setContador(count || 0);
-        const reparados = data.filter(r => r.estatus === 'reparado').length;
-        setContadorReparados(reparados);
       }
     } catch (error) {
       console.log('Error cargando reportes:', error.message);
@@ -128,11 +135,13 @@ export default function HomeScreen() {
     const reporte = reportes.find(r => r.folio.toLowerCase() === busquedaFolio.trim().toLowerCase());
     
     if (reporte && reporte.latitud && reporte.longitud && mapRef.current) {
-      mapRef.current.setCamera({
-        centerCoordinate: [reporte.longitud, reporte.latitud],
-        zoomLevel: 16,
-        animationDuration: 1000,
-      });
+      mapRef.current.animateToRegion({
+        latitude: reporte.latitud,
+        longitude: reporte.longitud,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+      
       setBusquedaFolio('');
       setReporteSeleccionado(reporte);
       setModalDetalle(true);
@@ -280,210 +289,224 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <LinearGradient
+      colors={['#00C9A7', '#4A90E2']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ flex: 1 }}
+    >
       <StatusBar barStyle="light-content" />
       
-      <View style={styles.mapContainer}>
-        {location ? (
-          <View style={styles.mapWrapper}>
-           {Platform.OS === 'web' ? (
-              <View style={[styles.map, {justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)'}]}>
-                <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', padding: 20 }}>
-                  Mapa disponible solo en la app móvil{"\n"}Descarga GeoBache TJ en tu celular
+      {location ? (
+  Platform.OS === 'web' ? (
+    <View style={[styles.map, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }]}>
+      <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', padding: 20 }}>
+        Mapa disponible solo en la app móvil{"\n"}Descarga GeoBache TJ en tu celular
+      </Text>
+    </View>
+  ) : (
+    <View style={styles.mapWrapper}>
+      <MapView
+        ref={mapRef}
+        style={{ flex: 1 }}
+        showsUserLocation={true}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        toolbarEnabled={false}
+        initialRegion={{
+          latitude: 32.4990,
+          longitude: -116.9496,
+          latitudeDelta: 0.15,
+          longitudeDelta: 0.15,
+        }}
+      >
+        {reportesFiltrados.map((reporte) => (
+          reporte.latitud && reporte.longitud ? (
+            <Marker
+              key={reporte.id}
+              coordinate={{ latitude: reporte.latitud, longitude: reporte.longitud }}
+              onPress={() => {
+                setReporteSeleccionado(reporte);
+                setModalDetalle(true);
+              }}
+            >
+              <View style={[
+                styles.marcador,
+                reporte.estatus === 'reparado' && styles.marcadorReparado,
+                reporte.estatus === 'pendiente' && styles.marcadorPendiente,
+                reporte.estatus === 'en_proceso' && styles.marcadorProceso
+              ]}>
+                <Text style={styles.marcadorTexto}>
+                  {obtenerIcono(reporte.tipo_reporte)}
                 </Text>
               </View>
-            ) : (
-              <MapView
-                ref={mapRef}
-                style={styles.map}
-                mapStyle="https://demotiles.maplibre.org/style.json"
-              >
-                <MapLibreGL.UserLocation visible={true} />
-                
-                {reportesFiltrados.map((reporte) => (
-                  reporte.latitud && reporte.longitud ? (
-                    <Marker
-                      key={reporte.id}
-                      coordinate={[reporte.longitud, reporte.latitud]}
-                      onPress={() => {
-                        setReporteSeleccionado(reporte);
-                        setModalDetalle(true);
-                      }}
-                    >
-                      <View style={[
-                        styles.marcador,
-                        reporte.estatus === 'reparado' && styles.marcadorReparado,
-                        reporte.estatus === 'pendiente' && styles.marcadorPendiente,
-                        reporte.estatus === 'en_proceso' && styles.marcadorProceso
-                      ]}>
-                        <Text style={styles.marcadorTexto}>
-                          {obtenerIcono(reporte.tipo_reporte)}
-                        </Text>
-                      </View>
-                    </Marker>
-                  ) : null
-                ))}
-              </MapView>
-            )}
+            </Marker>
+          ) : null
+        ))}
+      </MapView>
 
-            <View style={styles.controlesMapa}>
-              <TouchableOpacity style={styles.botonAyuda} onPress={() => setModalAyuda(true)}>
-                <Ionicons name="help-circle" size={28} color="white" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.botonUbicacion} onPress={centrarEnUbicacion}>
-                <Ionicons name="locate" size={28} color="white" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.barraBusqueda}>
-              <TextInput
-                style={styles.inputBusqueda}
-                placeholder="Buscar folio: GB-B-00001"
-                placeholderTextColor="#999"
-                value={busquedaFolio}
-                onChangeText={setBusquedaFolio}
-                autoCapitalize="characters"
-                onSubmitEditing={buscarPorFolio}
-              />
-              <TouchableOpacity style={styles.botonBuscar} onPress={buscarPorFolio}>
-                <Ionicons name="search" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Cargando mapa...</Text>
-          </View>
-        )}
+      <View style={styles.headerMapa}>
+        <View style={styles.barraBusqueda}>
+          <TextInput
+            style={styles.inputBusqueda}
+            placeholder="Buscar folio: GB-B-00001"
+            placeholderTextColor="#999"
+            value={busquedaFolio}
+            onChangeText={setBusquedaFolio}
+            autoCapitalize="characters"
+            onSubmitEditing={buscarPorFolio}
+          />
+          <TouchableOpacity style={styles.botonBuscar} onPress={buscarPorFolio}>
+            <Ionicons name="search" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+        
+        <TouchableOpacity style={styles.botonAyuda} onPress={() => setModalAyuda(true)}>
+          <Ionicons name="help-circle" size={28} color="white" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContainer}>
-        <TouchableOpacity 
-          onLongPress={() => router.push('/dashboard')}
-          delayLongPress={2000}
-          activeOpacity={1}
-        >
-          <Text style={styles.titulo}>Hecho para la ciudadanía de TJ</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.contadoresContainer}>
-          <View style={styles.cardContador}>
-            <Text style={styles.numeroContador}>{contador}</Text>
-            <Text style={styles.textoContador}>Reportes</Text>
-          </View>
-          <View style={[styles.cardContador, { backgroundColor: 'rgba(0,201,167,0.3)' }]}>
-            <Text style={styles.numeroContador}>{contadorReparados}</Text>
-            <Text style={styles.textoContador}>Reparados</Text>
-          </View>
-        </View>
+      <TouchableOpacity style={styles.botonUbicacion} onPress={centrarEnUbicacion}>
+        <Ionicons name="locate" size={28} color="white" />
+      </TouchableOpacity>
+    </View>
+  )
+) : (
+  <View style={styles.loadingContainer}>
+    <Text style={styles.loadingText}>Cargando mapa...</Text>
+  </View>
+)}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtrosContainer}>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'todos' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('todos')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'todos' && styles.textoFiltroActivo]}>Todos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'bache' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('bache')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'bache' && styles.textoFiltroActivo]}>🕳️ Baches</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'alcantarilla' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('alcantarilla')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'alcantarilla' && styles.textoFiltroActivo]}>⚫ Alcantarillas</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'camellon' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('camellon')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'camellon' && styles.textoFiltroActivo]}>🚧 Camellones</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'pendiente' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('pendiente')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'pendiente' && styles.textoFiltroActivo]}>Pendientes</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.botonFiltro, filtroActivo === 'reparado' && styles.botonFiltroActivo]}
-            onPress={() => setFiltroActivo('reparado')}
-          >
-            <Text style={[styles.textoFiltro, filtroActivo === 'reparado' && styles.textoFiltroActivo]}>✅ Reparados</Text>
-          </TouchableOpacity>
-        </ScrollView>
+<View style={{ flex: 1 }}>      
+  <TouchableOpacity 
+    onLongPress={() => router.push('/dashboard')}
+    delayLongPress={2000}
+    activeOpacity={1}
+  >
+    <Text style={styles.titulo}>Hecho para la ciudadanía de TJ</Text>
+  </TouchableOpacity>
+  
+  <View style={styles.contadoresMiniContainer}>
+    <View style={styles.contadorMini}>
+      <Text style={styles.numeroContadorMini}>{contadorReportes}</Text>
+      <Text style={styles.textoContadorMini}>Reportes</Text>
+    </View>
+    <View style={styles.separadorContador} />
+    <View style={styles.contadorMini}>
+      <Text style={[styles.numeroContadorMini, {color: '#00C9A7'}]}>{contadorReparados}</Text>
+      <Text style={styles.textoContadorMini}>Reparados</Text>
+    </View>
+  </View>
 
-        <Text style={styles.tituloApp}>GeoBache TJ</Text>
-        <Text style={styles.subtitulo}>Reporta los imperfectos de Tijuana</Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtrosContainer}>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'todos' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('todos')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'todos' && styles.textoFiltroActivo]}>Todos</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'bache' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('bache')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'bache' && styles.textoFiltroActivo]}>🕳️ Baches</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'alcantarilla' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('alcantarilla')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'alcantarilla' && styles.textoFiltroActivo]}>⚫ Alcantarillas</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'camellon' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('camellon')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'camellon' && styles.textoFiltroActivo]}>🚧 Camellones</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'pendiente' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('pendiente')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'pendiente' && styles.textoFiltroActivo]}>Pendientes</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[styles.botonFiltro, filtroActivo === 'reparado' && styles.botonFiltroActivo]}
+      onPress={() => setFiltroActivo('reparado')}
+    >
+      <Text style={[styles.textoFiltro, filtroActivo === 'reparado' && styles.textoFiltroActivo]}>✅ Reparados</Text>
+    </TouchableOpacity>
+    <View style={{ height: 30 }} />
+  </ScrollView>
 
-        <Link href={{ pathname: "/reporte", params: { tipo: 'bache' } }} asChild>
-          <TouchableOpacity>
-            <LinearGradient
-              colors={['#FF3B30', '#FF9500']}
-              style={styles.botonReporte}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.iconoBoton}>🕳️</Text>
-              <Text style={styles.textoBoton}>Reportar Bache</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Link>
+  <Text style={styles.tituloApp}>GeoBache TJ</Text>
+  <Text style={styles.subtitulo}>Reporta los imperfectos de Tijuana</Text>
 
-        <Link href={{ pathname: "/reporte", params: { tipo: 'alcantarilla' } }} asChild>
-          <TouchableOpacity>
-            <LinearGradient
-              colors={['#00C9A7', '#00805E']}
-              style={styles.botonSecundario}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.iconoBoton}>🚧</Text>
-              <Text style={styles.textoBoton}>Alcantarilla / Camellón</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Link>
-        
-        <View style={{ height: 30 }} />
-      </ScrollView>
-      <Modal
-        visible={modalAyuda}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setModalAyuda(false)}
+  <Link href={{ pathname: "/reporte", params: { tipo: 'bache' } }} asChild>
+    <TouchableOpacity>
+      <LinearGradient
+        colors={['#FF3B30', '#FF9500']}
+        style={styles.botonReporte}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
       >
-        <View style={styles.modalFondo}>
-          <View style={styles.modalContenido}>
-            <Text style={styles.modalTitulo}>¿Cómo usar GeoBache TJ?</Text>
-            
-            <Text style={styles.modalSubtitulo}>Leyenda del mapa:</Text>
-            <View style={styles.leyendaItem}>
-              <View style={[styles.marcador, styles.marcadorPendiente]}><Text>🕳️</Text></View>
-              <Text style={styles.leyendaTexto}>Bache pendiente</Text>
-            </View>
-            <View style={styles.leyendaItem}>
-              <View style={[styles.marcador, styles.marcadorPendiente]}><Text>⚫</Text></View>
-              <Text style={styles.leyendaTexto}>Alcantarilla pendiente</Text>
-            </View>
-            <View style={styles.leyendaItem}>
-              <View style={[styles.marcador, styles.marcadorPendiente]}><Text>🚧</Text></View>
-              <Text style={styles.leyendaTexto}>Camellón pendiente</Text>
-            </View>
-            <View style={styles.leyendaItem}>
-              <View style={[styles.marcador, styles.marcadorReparado]}><Text>✅</Text></View>
-              <Text style={styles.leyendaTexto}>Reparado por Ayuntamiento</Text>
-            </View>
+        <Text style={styles.iconoBoton}>🕳️</Text>
+        <Text style={styles.textoBoton}>Reportar Bache</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  </Link>
+
+  <Link href={{ pathname: "/reporte", params: { tipo: 'alcantarilla' } }} asChild>
+    <TouchableOpacity>
+      <LinearGradient
+        colors={['#00C9A7', '#00805E']}
+        style={styles.botonSecundario}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+      >
+        <Text style={styles.iconoBoton}>🚧</Text>
+        <Text style={styles.textoBoton}>Alcantarilla / Camellón</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  </Link>
+  
+  <View style={{ height: 30 }} />
+</View>
+
+<Modal
+  visible={modalAyuda}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => setModalAyuda(false)}
+>
+  <View style={styles.modalFondo}>
+    <View style={styles.modalContenido}>
+      <Text style={styles.modalTitulo}>¿Cómo usar GeoBache TJ?</Text>
+      
+      <Text style={styles.modalSubtitulo}>Leyenda del mapa:</Text>
+      <View style={styles.leyendaItem}>
+        <View style={[styles.marcador, styles.marcadorPendiente]}><Text>🕳️</Text></View>
+        <Text style={styles.leyendaTexto}>Bache pendiente</Text>
+      </View>
+      <View style={styles.leyendaItem}>
+        <View style={[styles.marcador, styles.marcadorPendiente]}><Text>⚫</Text></View>
+        <Text style={styles.leyendaTexto}>Alcantarilla pendiente</Text>
+      </View>
+      <View style={styles.leyendaItem}>
+        <View style={[styles.marcador, styles.marcadorPendiente]}><Text>🚧</Text></View>
+        <Text style={styles.leyendaTexto}>Camellón pendiente</Text>
+      </View>
+      <View style={styles.leyendaItem}>
+        <View style={[styles.marcador, styles.marcadorReparado]}><Text>✅</Text></View>
+        <Text style={styles.leyendaTexto}>Reparado por Ayuntamiento</Text>
+      </View>
 
             <Text style={styles.modalSubtitulo}>Pasos para reportar:</Text>
             <Text style={styles.modalTexto}>1. Pica "Reportar Bache" o "Alcantarilla/Camellón"</Text>
             <Text style={styles.modalTexto}>2. Toma foto y selecciona el tamaño/tipo</Text>
             <Text style={styles.modalTexto}>3. Envía. Guarda tu folio GB-X-00001</Text>
             <Text style={styles.modalTexto}>4. Busca tu folio arriba para ver el estatus</Text>
-            <Text style={styles.modalTexto}>5. Pica el pin y comparte tu reporte</Text>
-
+            <Text style={styles.modalTexto}>5. Pica el pin y comparte</Text>
+    
             <TouchableOpacity style={styles.botonCerrarModal} onPress={() => setModalAyuda(false)}>
               <Text style={styles.textoCerrarModal}>Entendido</Text>
             </TouchableOpacity>
@@ -606,10 +629,9 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </LinearGradient>
   );
 }
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#4A90E2' },
   mapContainer: { height: height * 0.55, backgroundColor: '#4A90E2' },
@@ -617,52 +639,28 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#4A90E2' },
   loadingText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  controlesMapa: {
+
+  // BARRA SUPERIOR: BUSCADOR + AYUDA
+  headerMapa: {
     position: 'absolute',
-    top: 50,
-    right: 15,
+    top: 40,
+    left: 15,
+    right: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
-  botonAyuda: {
-    backgroundColor: 'rgba(74, 144, 226, 0.9)',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  botonUbicacion: {
-    backgroundColor: 'rgba(0, 201, 167, 0.9)',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   barraBusqueda: {
-    position: 'absolute',
-    top: 50,
-    left: 15,
-    right: 75,
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: 'white',
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    borderRadius: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.20,
     shadowRadius: 4,
     elevation: 5,
   },
@@ -670,16 +668,51 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#333',
+    paddingVertical: 10,
   },
   botonBuscar: {
     backgroundColor: '#4A90E2',
-    width: 35,
-    height: 35,
-    borderRadius: 17.5,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
   },
+  botonAyuda: {
+    position: 'absolute',
+    top: 50,
+    right: 1,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#4A90E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+
+  // BOTÓN UBICAR ARRIBA DEL PANEL AZUL
+  botonUbicacion: {
+    position: 'absolute',
+    bottom: 5,
+    right: 5,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#00C9A7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+
   marcador: {
     backgroundColor: 'white',
     padding: 8,
@@ -701,6 +734,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   scrollContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flex: 1,
     backgroundColor: '#4A90E2',
   },
@@ -709,86 +746,97 @@ const styles = StyleSheet.create({
   },
   titulo: {
     color: 'white',
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    marginBottom: 15,
-    fontWeight: '600',
-    opacity: 0.9,
+    marginTop: 15,
+    marginBottom: 10,
+    fontWeight: '700',
+    opacity: 10,
   },
-  contadoresContainer: {
+  contadoresMiniContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-    gap: 10,
-  },
-  cardContador: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 15,
-    borderRadius: 15,
-    flex: 1,
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 5,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'space-around',
   },
-  numeroContador: {
-    fontSize: 32,
+  contadorMini: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  numeroContadorMini: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: 'white',
+    color: '#333',
   },
-  textoContador: {
+  textoContadorMini: {
     fontSize: 12,
-    color: 'white',
-    marginTop: 5,
-    fontWeight: '600',
+    color: '#666',
+    marginTop: 2,
+  },
+  separadorContador: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#E0E0E0',
   },
   filtrosContainer: {
-    marginBottom: 20,
-    maxHeight: 40,
+    marginBottom: 15,
+    maxHeight: 45,
+    paddingLeft: 20,
   },
   botonFiltro: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'white',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 20,
     marginRight: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0',
+    elevation: 2,
   },
   botonFiltroActivo: {
-    backgroundColor: 'white',
+    backgroundColor: '#4A90E2',
+    borderColor: '#4A90E2',
   },
   textoFiltro: {
-    color: 'white',
+    color: '#666',
     fontSize: 13,
     fontWeight: '600',
   },
   textoFiltroActivo: {
-    color: '#4A90E2',
+    color: 'white',
   },
   tituloApp: {
-    color: 'white',
-    fontSize: 36,
+    color: '#333',
+    fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 5,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    marginBottom: 2,
   },
   subtitulo: {
-    color: 'white',
-    fontSize: 16,
+    color: '#666',
+    fontSize: 14,
     textAlign: 'center',
-    marginBottom: 30,
-    opacity: 0.9,
+    marginBottom: 15,
   },
   botonReporte: {
     flexDirection: 'row',
-    padding: 18,
+    padding: 16,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -797,11 +845,12 @@ const styles = StyleSheet.create({
   },
   botonSecundario: {
     flexDirection: 'row',
-    padding: 18,
+    padding: 16,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -809,12 +858,12 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   iconoBoton: {
-    fontSize: 28,
+    fontSize: 24,
     marginRight: 10,
   },
   textoBoton: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   modalFondo: {

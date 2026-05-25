@@ -1,12 +1,13 @@
 import { Text, View, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function PrivacidadScreen() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={['#4A90E2', '#00C9A7']} style={styles.container}>
       <StatusBar barStyle="light-content" />
       
       <View style={styles.header}>
@@ -74,14 +75,13 @@ export default function PrivacidadScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#4A90E2' 
   },
   header: {
     flexDirection: 'row',
@@ -93,6 +93,8 @@ const styles = StyleSheet.create({
   },
   botonAtras: {
     padding: 5,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 20,
   },
   tituloHeader: {
     color: 'white',

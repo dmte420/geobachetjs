@@ -3,18 +3,20 @@ import { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
-import MapLibreGL from '@maplibre/maplibre-react-native';
+import MapView, { Circle } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-
-MapLibreGL.setAccessToken(null);
+import { getDistance } from 'geolib';
 
 export default function ReporteScreen() {
-  const [foto, setFoto] = useState(null);
+  const [fotos, setFotos] = useState([]);
+  const MAX_FOTOS = 2;
   const [subiendo, setSubiendo] = useState(false);
   const [location, setLocation] = useState(null);
+  const [ubicacionOriginal, setUbicacionOriginal] = useState(null);
+  const [regionActual, setRegionActual] = useState(null);
   const [descripcion, setDescripcion] = useState('');
   const [codigoPostal, setCodigoPostal] = useState('');
   const [colonia, setColonia] = useState('');
@@ -57,6 +59,14 @@ export default function ReporteScreen() {
 
   const categoriasActuales = subTipo === 'camellon'? categoriasCamellon : categoriasAlcantarilla;
 
+  const textosAyuda = {
+    bache: 'Para reportar un bache:\n\n1. Coloca el pin rojo justo encima del bache\n2. Solo puedes moverlo 100m a la redonda\n3. Selecciona el tamaño más cercano\n4. La foto es opcional pero ayuda mucho',
+    camellon: 'Para reportar un camellón:\n\n1. Ubica el pin en el tramo afectado\n2. Selecciona el tipo de problema principal\n3. Describe si hay riesgo para peatones o autos\n4. Agrega foto del área completa',
+    alcantarilla: 'Para reportar una alcantarilla:\n\n1. Pon el pin justo sobre la alcantarilla dañada\n2. Si falta la tapa marca "Falta de tapa" - es urgente\n3. Indica si hay agua estancada o mal olor\n4. Toma foto donde se vea el daño'
+  };
+
+  const tipoParaAyuda = esBache? 'bache' : subTipo;
+
   useEffect(() => {
     pedirUbicacion();
   }, []);
@@ -65,23 +75,74 @@ export default function ReporteScreen() {
     setCategoria('');
   }, [subTipo]);
 
+  const tomarFoto = async () => {
+    if (fotos.length >= MAX_FOTOS) {
+      Alert.alert('Límite alcanzado', 'Solo puedes subir 2 fotos máximo');
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status!== 'granted') {
+      Alert.alert('Permiso denegado', 'Necesitas dar acceso a la cámara');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+
+    if (!result.canceled) {
+      setFotos([...fotos, result.assets[0].uri]);
+    }
+  };
+
+  const eliminarFoto = (index) => {
+    const nuevasFotos = fotos.filter((_, i) => i!== index);
+    setFotos(nuevasFotos);
+  };
+
+  const mostrarAyudaAlert = () => {
+    Alert.alert(
+      `¿Cómo reportar ${tituloReporte}?`,
+      textosAyuda[tipoParaAyuda],
+      [{ text: 'Entendido' }]
+    );
+  };
+
   const pedirUbicacion = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Low,
+          accuracy: Location.Accuracy.High,
         });
         setLocation(loc);
+
+        setUbicacionOriginal({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
 
         Location.reverseGeocodeAsync({
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         }).then((reverse) => {
           if (reverse.length > 0) {
-            setCodigoPostal(reverse[0].postalCode || '');
-            setColonia(reverse[0].subregion || reverse[0].district || '');
-            setDireccionTexto(`${reverse[0].street || ''} ${reverse[0].name || ''}`);
+            const addr = reverse[0];
+            setCodigoPostal(addr.postalCode || '');
+            setColonia(addr.subregion || addr.district || addr.city || '');
+
+            const calle = addr.street || '';
+            const numero = addr.streetNumber || '';
+            let direccionFinal = `${calle} ${numero}`.trim();
+
+            if (!direccionFinal) {
+              const esPlusCode = addr.name && addr.name.includes('+');
+              direccionFinal =!esPlusCode && addr.name? addr.name : 'Calle sin nombre';
+            }
+
+            setDireccionTexto(direccionFinal);
           }
         });
       }
@@ -103,19 +164,6 @@ export default function ReporteScreen() {
     }
   };
 
-  const tomarFoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status!== 'granted') return;
-
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.5,
-    });
-
-    if (!result.canceled) {
-      setFoto(result.assets[0].uri);
-    }
-  };
-
   const subirReporte = async () => {
     if (!location) {
       Alert.alert('Error', 'Espera a que cargue el mapa con tu ubicación');
@@ -134,28 +182,31 @@ export default function ReporteScreen() {
 
     setSubiendo(true);
     try {
-      let publicUrl = null;
+      let urlsFotos = [null, null];
 
-      if (foto) {
-        const response = await fetch(foto);
-        const arrayBuffer = await response.arrayBuffer();
-        const fileExt = foto.split('.').pop()?.toLowerCase() || 'jpg';
-        const fileName = `${Date.now()}.${fileExt}`;
+      // SUBIR LAS 2 FOTOS A STORAGE
+      if (fotos.length > 0) {
+        for (let i = 0; i < fotos.length; i++) {
+          const response = await fetch(fotos[i]);
+          const arrayBuffer = await response.arrayBuffer();
+          const fileExt = fotos[i].split('.').pop()?.toLowerCase() || 'jpg';
+          const fileName = `${Date.now()}_${i}.${fileExt}`;
 
-        const { error: uploadError } = await supabase.storage
-         .from('foto-reportes')
-         .upload(fileName, arrayBuffer, {
-            contentType: `image/${fileExt}`,
-            upsert: false,
-          });
+          const { error: uploadError } = await supabase.storage
+           .from('foto-reportes')
+           .upload(fileName, arrayBuffer, {
+              contentType: `image/${fileExt}`,
+              upsert: false,
+            });
 
-        if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage
-         .from('foto-reportes')
-         .getPublicUrl(fileName);
+          const { data } = supabase.storage
+           .from('foto-reportes')
+           .getPublicUrl(fileName);
 
-        publicUrl = data.publicUrl;
+          urlsFotos[i] = data.publicUrl;
+        }
       }
 
       const tipoFinal = esBache? 'bache' : subTipo;
@@ -171,9 +222,10 @@ export default function ReporteScreen() {
        .from('reportes')
        .insert({
           folio: nuevoFolio,
-          foto_url: publicUrl,
-          latitud: location.coords.latitude,
-          longitud: location.coords.longitude,
+          foto_url: urlsFotos[0], // ← Foto 1
+          foto_url_2: urlsFotos[1], // ← Foto 2
+          latitud: regionActual?.latitude || location.coords.latitude,
+          longitud: regionActual?.longitude || location.coords.longitude,
           descripcion: descripcion || null,
           tipo_reporte: tipoFinal,
           categoria_reporte: categoria || null,
@@ -206,7 +258,21 @@ export default function ReporteScreen() {
       style={styles.container}
     >
       <TouchableOpacity style={styles.botonRegresar} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={28} color="white" />
+        <Ionicons
+          name="arrow-back"
+          size={30}
+          color="#0066FF"
+          style={{ textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: {width: 0, height: 2}, textShadowRadius: 3 }}
+        />
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.botonAyuda} onPress={mostrarAyudaAlert}>
+        <Ionicons
+          name="help-circle"
+          size={30}
+          color="#0066FF"
+          style={{ textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: {width: 0, height: 2}, textShadowRadius: 3 }}
+        />
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -217,7 +283,7 @@ export default function ReporteScreen() {
 
         {!esBache && (
           <View style={styles.selectorRow}>
-                <TouchableOpacity
+            <TouchableOpacity
               style={[styles.botonSelector, subTipo === 'camellon' && styles.botonSelectorActivo]}
               onPress={() => setSubTipo('camellon')}
             >
@@ -233,43 +299,77 @@ export default function ReporteScreen() {
         )}
 
         {location? (
-  <View style={styles.mapaContainer}>
-    {Platform.OS === 'web' ? (
-      <View style={[styles.mapa, {justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)'}]}>
-        <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', padding: 20 }}>
-          Mapa disponible solo en la app móvil{"\n"}Usa tu celular para marcar la ubicación exacta
-        </Text>
-      </View>
-    ) : (
-     <MapLibreGL.MapView
-  ref={mapRef}
-  style={styles.mapa}
-  styleURL="https://demotiles.maplibre.org/style.json"
->
-  <MapLibreGL.Camera
-    zoomLevel={17}
-    centerCoordinate={[
-      location.coords.longitude,
-      location.coords.latitude
-    ]}
-    animationDuration={0}
-  />
-  <MapLibreGL.UserLocation visible={true} />
-  <MapLibreGL.PointAnnotation
-    id="ubicacionReporte"
-    coordinate={[
-      location.coords.longitude,
-      location.coords.latitude
-    ]}
-    title="Ubicación del reporte"
-  >
-    <View style={[styles.markerPin, { backgroundColor: colorPrimario }]} />
-  </MapLibreGL.PointAnnotation>
-</MapLibreGL.MapView>
-)}
-            <TouchableOpacity style={styles.botonUbicacion} onPress={centrarEnUbicacion}>
-              <Ionicons name="locate" size={24} color="white" />
-            </TouchableOpacity>
+          <View style={styles.mapaContainer}>
+            {Platform.OS === 'web'? (
+              <View style={[styles.mapa, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }]}>
+                <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', padding: 20 }}>
+                  Mapa disponible solo en la app móvil{"\n"}Usa tu celular para marcar la ubicación exacta
+                </Text>
+              </View>
+            ) : (
+              <View style={StyleSheet.absoluteFill}>
+                <MapView
+                  ref={mapRef}
+                  style={StyleSheet.absoluteFill}
+                  initialRegion={{
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                  }}
+                  showsUserLocation={true}
+                  showsMyLocationButton={false}
+                  scrollEnabled={true}
+                  zoomEnabled={true}
+                  onMapReady={() => {
+                    setUbicacionOriginal({
+                      latitude: location.coords.latitude,
+                      longitude: location.coords.longitude,
+                    });
+                    setRegionActual({
+                      latitude: location.coords.latitude,
+                      longitude: location.coords.longitude,
+                      latitudeDelta: 0.005,
+                      longitudeDelta: 0.005,
+                    });
+                  }}
+                  onRegionChangeComplete={(region) => {
+                    if (!ubicacionOriginal) return;
+
+                    const distancia = getDistance(ubicacionOriginal, region);
+
+                    if (distancia > 100) {
+                      mapRef.current?.animateToRegion({
+                       ...ubicacionOriginal,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }, 300);
+                      Alert.alert('Límite alcanzado', 'Solo puedes mover el pin 100m desde tu ubicación');
+                    } else {
+                      setRegionActual(region);
+                    }
+                  }}
+                >
+                  {ubicacionOriginal && (
+                    <Circle
+                      center={ubicacionOriginal}
+                      radius={100}
+                      strokeColor="rgba(0, 122, 255, 0.8)"
+                      fillColor="rgba(0, 122, 255, 0.2)"
+                      strokeWidth={2}
+                    />
+                  )}
+                </MapView>
+
+                <View style={styles.pinCentro} pointerEvents="none">
+                  <Text style={{ fontSize: 40 }}>📍</Text>
+                </View>
+
+                <TouchableOpacity style={styles.botonUbicacion} onPress={centrarEnUbicacion}>
+                  <Ionicons name="locate" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.mapaContainer}>
@@ -278,8 +378,8 @@ export default function ReporteScreen() {
             </View>
           </View>
         )}
-    
-        <TextInput      
+
+        <TextInput
           style={styles.input}
           placeholder="Código Postal"
           placeholderTextColor="#999"
@@ -296,7 +396,7 @@ export default function ReporteScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="Dirección / Referencia"
+          placeholder="Calle y número"
           placeholderTextColor="#999"
           value={direccionTexto}
           onChangeText={setDireccionTexto}
@@ -345,14 +445,46 @@ export default function ReporteScreen() {
           multiline
         />
 
-        {foto? (
-          <Image source={{ uri: foto }} style={styles.imagen} />
-        ) : (
-          <TouchableOpacity style={styles.botonCamara} onPress={tomarFoto}>
-            <Ionicons name="camera" size={40} color="white" />
-            <Text style={styles.textoBotonCamara}>Tomar Foto (Opcional)</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.labelFotos}>Fotos del problema ({fotos.length}/2)</Text>
+<View style={styles.contenedorFotos}>
+  {fotos[0]? (
+    <View style={styles.previewFoto}>
+      <Image source={{ uri: fotos[0] }} style={styles.imagenPreview} />
+      <TouchableOpacity
+        style={styles.botonEliminar}
+        onPress={() => eliminarFoto(0)}
+      >
+        <Ionicons name="close-circle" size={24} color="#FF3B30" />
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <TouchableOpacity style={styles.botonTomarFoto} onPress={tomarFoto}>
+      <Ionicons name="camera" size={32} color="white" />
+      <Text style={styles.textoBotonFoto}>Foto 1</Text>
+    </TouchableOpacity>
+  )}
+
+  {fotos[1]? (
+    <View style={styles.previewFoto}>
+      <Image source={{ uri: fotos[1] }} style={styles.imagenPreview} />
+      <TouchableOpacity
+        style={styles.botonEliminar}
+        onPress={() => eliminarFoto(1)}
+      >
+        <Ionicons name="close-circle" size={24} color="#FF3B30" />
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <TouchableOpacity
+      style={[styles.botonTomarFoto, fotos.length === 0 && styles.deshabilitado]}
+      onPress={tomarFoto}
+      disabled={fotos.length === 0}
+    >
+      <Ionicons name="camera" size={32} color="white" />
+      <Text style={styles.textoBotonFoto}>Foto 2</Text>
+    </TouchableOpacity>
+  )}
+</View>
 
         <TouchableOpacity
           style={[styles.botonSubir, { backgroundColor: colorPrimario }, subiendo && styles.botonDeshabilitado]}
@@ -364,7 +496,7 @@ export default function ReporteScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/privacidad')}>
+    <TouchableOpacity onPress={() => router.push('/privacidad')}>
           <Text style={styles.textoLegal}>
             Al enviar aceptas el <Text style={styles.linkLegal}>Aviso de Privacidad</Text>
           </Text>
@@ -381,161 +513,202 @@ const styles = StyleSheet.create({
     top: 50,
     left: 20,
     zIndex: 10,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
+    backgroundColor: 'transparent',
     padding: 8,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scroll: { padding: 20, paddingTop: 100 },
-  header: { alignItems: 'center', marginBottom: 15 },
-  iconoHeader: { fontSize: 40, marginBottom: 5 },
+  botonAyuda: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'transparent',
+    padding: 8,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scroll: {
+    padding: 20,
+    paddingTop: 50,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconoHeader: {
+    fontSize: 50,
+  },
   titulo: {
-    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4
+    color: 'white',
+    marginTop: 4,
   },
   selectorRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-    gap: 10,
+    justifyContent: 'space-around',
+    marginBottom: 20,
   },
   botonSelector: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    padding: 14,
-    borderRadius: 12,
-    flex: 1,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   botonSelectorActivo: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderColor: 'white',
+    backgroundColor: 'rgba(255,255,255,0.4)',
   },
-  textoSelector: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  textoSelector: {
+    color: 'white',
+    fontWeight: '600',
+  },
   mapaContainer: {
-    height: 200,
-    borderRadius: 15,
+    width: '100%',
+    height: 250,
+    borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 15,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)'
+    backgroundColor: '#ccc',
   },
-  mapa: { flex: 1 },
-  botonUbicacion: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    backgroundColor: '#4A90E2',
-    width: 45,
-    height: 45,
-    borderRadius: 22.5,
+  mapa: {
+   ...StyleSheet.absoluteFillObject,
+  },
+  mapaLoading: {
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
   },
-  mapaLoading: { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
+  pinCentro: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -20,
+    marginTop: -40,
+  },
+  botonUbicacion: {
+    position: 'absolute',
+    bottom: 15,
+    right: 15,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 25,
+    padding: 10,
+  },
   input: {
     backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
+    borderRadius: 8,
+    padding: 12,
     marginBottom: 12,
     fontSize: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
   },
   label: {
     color: 'white',
     fontSize: 16,
-    marginBottom: 8,
     fontWeight: '600',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2
+    marginBottom: 10,
   },
   medidasContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 8,
+    marginBottom: 15,
   },
   botonMedida: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    padding: 12,
-    borderRadius: 8,
     flex: 1,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 4,
+    alignItems: 'center',
   },
-  textoMedida: { color: 'white', textAlign: 'center', fontSize: 13, fontWeight: '600' },
+  textoMedida: {
+    color: 'white',
+    fontSize: 12,
+  },
   categoriasContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-    gap: 8,
+    marginBottom: 15,
   },
   botonCategoria: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    padding: 12,
+    padding: 10,
     borderRadius: 8,
-    width: '48%',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    margin: 4,
   },
-  textoCategoria: { color: 'white', textAlign: 'center', fontSize: 13, fontWeight: '600' },
-  botonCamara: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    height: 200,
-    borderRadius: 15,
+  textoCategoria: {
+    color: 'white',
+    fontSize: 12,
+  },
+  labelFotos: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  contenedorFotos: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 15,
+  },
+  previewFoto: {
+    width: '48%',
+    aspectRatio: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  imagenPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  botonTomarFoto: {
+    width: '48%',
+    aspectRatio: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    borderStyle: 'dashed',
+    gap: 8,
   },
-  textoBotonCamara: { color: 'white', marginTop: 10, fontSize: 16, fontWeight: '600' },
-  imagen: {
-    width: '100%',
-    height: 200,
-    borderRadius: 15,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)'
+  deshabilitado: {
+    opacity: 0.4,
+  },
+  textoBotonFoto: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  botonEliminar: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: 'white',
+    borderRadius: 12,
   },
   botonSubir: {
-    padding: 18,
-    borderRadius: 15,
+    borderRadius: 8,
+    padding: 16,
     alignItems: 'center',
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    marginTop: 10,
   },
-  botonDeshabilitado: { backgroundColor: '#666' },
-  textoSubir: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  botonDeshabilitado: {
+    opacity: 0.6,
+  },
+  textoSubir: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   textoLegal: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 12,
+    color: 'white',
     textAlign: 'center',
-    marginBottom: 40,
-    paddingHorizontal: 20,
+    marginTop: 15,
+    fontSize: 12,
   },
   linkLegal: {
-    fontWeight: 'bold',
     textDecorationLine: 'underline',
+    fontWeight: '600',
   },
 });

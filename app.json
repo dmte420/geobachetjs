@@ -1,113 +1,66 @@
 {
   "expo": {
+    "jsEngine": "jsc",
     "name": "GeoBachetj",
     "slug": "geobachetj",
     "scheme": "exp+geobachetjs",
-    "version": "2.1.5",
+    "version": "2.1.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "jsEngine": "hermes",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "cover",
       "backgroundColor": "#0B1E3D"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "GeoBache TJ usa tu ubicación para mostrar baches cercanos.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Necesitamos acceso a la cámara para tomar foto del bache.",
+          "photosPermission": "No usaremos galería, solo cámara."
+        }
+      ],
+      "expo-asset",
+      "expo-router",
+      "expo-secure-store"
+    ],
     "android": {
       "package": "com.dmte420.geobachetjs.G1",
-      "versionCode": 27,
+      "versionCode": 32,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#0B1E3D"
       },
       "permissions": [
-        "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
         "android.permission.VIBRATE",
         "android.permission.RECORD_AUDIO"
-      ],
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "exp+geobachetjs"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
       ]
     },
     "ios": {
       "bundleIdentifier": "com.dmte420.geobachetjs.v2",
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "GeoBache TJ necesita acceso a tu cámara para tomar fotos de los baches que reportes.",
         "NSLocationWhenInUseUsageDescription": "GeoBache TJ usa tu ubicación para mostrar baches cercanos y centrar el mapa.",
-        "NSPhotoLibraryUsageDescription": "GeoBache TJ necesita acceso a tu galería para seleccionar fotos de baches."
+        "NSCameraUsageDescription": "Necesitamos acceso a la cámara para tomar foto del bache."
       }
-    },
-    "plugins": [
-      "./withManifestFix",
-      [
-        "expo-image-picker",
-        {
-          "cameraPermission": "La app necesita acceso a tu cámara para reportar baches.",
-          "photosPermission": "La app necesita acceso a tu galería para seleccionar fotos de baches."
-        }
-      ],
-      "@maplibre/maplibre-react-native",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "GeoBache TJ usa tu ubicación para alertas de baches en tu ruta.",
-          "locationWhenInUsePermission": "GeoBache TJ usa tu ubicación para mostrar baches cercanos.",
-          "isAndroidBackgroundLocationEnabled": false
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34,
-            "minSdkVersion": 24,
-            "kotlinVersion": "2.0.21",
-            "extraMavenRepos": [
-              "https://maven.pkg.github.com/maplibre/maplibre-native"
-            ],
-            "packagingOptions": {
-              "pickFirst": [
-                "**/libc++_shared.so",
-                "**/libjsc.so"
-              ],
-              "exclude": [
-                "META-INF/DEPENDENCIES",
-                "META-INF/LICENSE",
-                "META-INF/NOTICE",
-                "META-INF/LICENSE.txt",
-                "META-INF/NOTICE.txt"
-              ]
-            }
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
-          }
-        }
-      ]
-    ],
-    "runtimeVersion": {
-      "policy": "appVersion"
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "2a0855bb-9fa9-4a67-affa-263dfb197a44"
+        "projectId": "87bc312a-bef7-4786-a998-a44b4e97a682"
       }
-    }
+    },
+    "owner": "429dmte"
   }
 }
