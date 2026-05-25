@@ -39,6 +39,7 @@
     "@babel/core": "^7.20.0",
     "@babel/plugin-transform-class-static-block": "^7.28.6",
     "@types/react": "~19.1.10",
+    "babel-preset-expo": "^56.0.12",
     "typescript": "~5.9.2"
   },
   "private": true
