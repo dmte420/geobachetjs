@@ -1,6 +1,5 @@
 {
   "expo": {
-    "jsEngine": "jsc",
     "name": "GeoBachetj",
     "slug": "geobachetj",
     "scheme": "exp+geobachetjs",
