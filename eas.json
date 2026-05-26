@@ -15,7 +15,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
+        "gradleCommand": ":app:assembleRelease",
+        "artifactName": "GeoBacheTJ-v${app.version}.apk"
       },
       "env": {
         "EXPO_PUBLIC_ENV": "preview"
@@ -24,7 +25,8 @@
     "production": {
       "distribution": "store",
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "artifactName": "GeoBacheTJ-v${app.version}.aab"
       },
       "env": {
         "EXPO_PUBLIC_ENV": "production"

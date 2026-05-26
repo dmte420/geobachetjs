@@ -3,7 +3,7 @@
     "name": "GeoBachetj",
     "slug": "geobachetj",
     "scheme": "exp+geobachetjs",
-    "version": "2.1.9",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -45,7 +45,12 @@
     ],
     "android": {
       "package": "com.dmte420.geobachetjs.G1",
-      "versionCode": 33,
+      "versionCode": 34,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBZqAXwZbwhJIUfvVBnpuLl3rh6NU1rEx0"
+        }
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon-foreground.png",
         "backgroundColor": "#0B1E3D"
